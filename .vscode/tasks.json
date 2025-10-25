@@ -1,0 +1,80 @@
+{
+	"version": "2.0.0",
+	"options": {
+		"cwd": "${workspaceFolder}/build"
+	},
+	"tasks": [
+		{
+            // 任务一： 创建 build 文件夹
+            "type": "shell",
+            "label": "CreateBuildDir", // label 标记任务名称
+            "command": "mkdir",  // 命令
+            "args": [
+                    "-Force",
+                    "build"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+        },
+		{
+			// 任务二： 执行cmake指令根据CMakeLists.txt在build目录下生成Makefile
+			"type": "shell",
+			"label": "cmake",
+			"command": "cmake",
+			"args": [
+				"-D",
+				"CMAKE_BUILD_TYPE:STRING=Debug",//编译带调试信息的
+				"-D",
+				"CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=TRUE",
+				"-G",
+				"MinGW Makefiles",
+				"-S",
+                ".."//CMakeLists.txt在build的上一级目录中
+			],
+			"dependsOn":[
+                "CreateBuildDir"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+		},
+		{
+			// 任务三： 执行mingw32-make.exe根据Makefile编译可执行文件
+			"label": "make",
+			"group":{
+				"kind": "build",
+				"isDefault": true
+			},
+			"command": "mingw32-make.exe",
+			"args": [
+			],
+			"dependsOn":[
+                "cmake"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/build"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ]
+		},
+		{
+			// 任务四： 调用任务三
+			"label":"C/C++: Cmake生成",
+			"dependsOn":[
+				"make"
+			]
+		}
+	],
+	"presentation": {
+		"panel": "shared"
+	}
+}

@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "iostream": "cpp"
+    },
+    "cmake.cmakePath": "D:\\Qt\\Tools\\CMake_64\\bin\\cmake.exe",
+    "cmake.generator": "MinGW Makefiles",
+    "C_Cpp.errorSquiggles": "enabled"
+}

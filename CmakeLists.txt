@@ -1,0 +1,36 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(LairEngine VERSION 0.0.1 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+# 添加 Unicode 和宽字符支持
+add_definitions(-DUNICODE -D_UNICODE)
+
+set(EXECUTABLE_OUTPUT_PATH ${CMAKE_SOURCE_DIR}/build/bin)
+
+# 将源文件和头文件分开分组
+set(SOURCE_FILES
+    "src/LairEngine.cpp"
+    "main.cpp"
+    "src/utils/Win32Tools.cpp")
+
+set(HEADER_FILES
+    "include/LairEngine.h"
+    "include/utils/Win32Tools.h"
+    "include/utils/Types.h")
+
+# 将源代码和头文件添加到此项目的可执行文件。
+add_executable (LairEngine ${SOURCE_FILES} ${HEADER_FILES})
+
+# 添加 include 目录到头文件搜索路径
+target_include_directories(LairEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/utils)
+
+link_directories(
+    ${PROJECT_SOURCE_DIR}/lib
+)
+
+if (CMAKE_VERSION VERSION_GREATER 3.12)
+  set_property(TARGET LairEngine PROPERTY CXX_STANDARD 20)
+endif()
+
+
