@@ -22,6 +22,31 @@ set(HEADER_FILES
 # 将源代码和头文件添加到此项目的可执行文件。
 add_executable (LairEngine ${SOURCE_FILES} ${HEADER_FILES})
 
+# 添加管理员权限清单文件（仅 Release 版本需要管理员权限）
+# Debug 版本不需要管理员权限，便于调试
+option(REQUIRE_ADMIN "Require administrator privileges" OFF)
+
+# 如果是 Release 模式，默认开启管理员权限
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(REQUIRE_ADMIN ON)
+endif()
+
+if(WIN32 AND REQUIRE_ADMIN)
+    message(STATUS "Building with administrator privileges requirement")
+    if(MSVC)
+        set_target_properties(LairEngine PROPERTIES 
+            LINK_FLAGS "/MANIFESTUAC:\"level='requireAdministrator' uiAccess='false'\" /MANIFEST:EMBED")
+    elseif(MINGW)
+        # MinGW/GCC 使用 .rc 资源文件
+        set(MANIFEST_FILE "${CMAKE_SOURCE_DIR}/LairEngine.manifest")
+        configure_file(${MANIFEST_FILE} ${CMAKE_BINARY_DIR}/LairEngine.manifest COPYONLY)
+        # 只在需要管理员权限时添加 .rc 资源文件
+        target_sources(LairEngine PRIVATE "LairEngine.rc")
+    endif()
+else()
+    message(STATUS "Building without administrator privileges requirement (for debugging)")
+endif()
+
 # 添加 include 目录到头文件搜索路径
 target_include_directories(LairEngine PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include/utils)
 
