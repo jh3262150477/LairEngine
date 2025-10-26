@@ -17,7 +17,7 @@ DWORD Console::WriteTextToConsole(HANDLE consoleHandle, LPCTSTR text) {
 }
 
 DWORD Console::WriteDwordToConsole(HANDLE consoleHandle, DWORD value) {
-    TCHAR buffer[16]; // DWORD 最大 4294967295 (10位) + '\0'
+    TCHAR buffer[16];  // DWORD 最大 4294967295 (10位) + '\0'
 #ifdef UNICODE
     _stprintf_s(buffer, _T("%lu"), value);
 #else
@@ -27,7 +27,8 @@ DWORD Console::WriteDwordToConsole(HANDLE consoleHandle, DWORD value) {
 }
 
 DWORD Console::PrintfT(HANDLE consoleHandle, LPCTSTR format, ...) {
-    if (!format) return static_cast<DWORD>(-1);
+    if (!format)
+        return static_cast<DWORD>(-1);
 
     va_list args;
     va_start(args, format);
@@ -50,7 +51,8 @@ DWORD Console::PrintfT(HANDLE consoleHandle, LPCTSTR format, ...) {
 #endif
     va_end(args);
 
-    if (len <= 0) return static_cast<DWORD>(-1);
+    if (len <= 0)
+        return static_cast<DWORD>(-1);
 
     std::vector<TCHAR> dynamicBuf(len + 1);
     va_start(args, format);
@@ -62,14 +64,18 @@ DWORD Console::PrintfT(HANDLE consoleHandle, LPCTSTR format, ...) {
 
 DWORD Console::PrintLastError(HANDLE consoleHandle) {
     DWORD errorCode = GetLastError();
-    if (errorCode == 0) return 0;
+    if (errorCode == 0)
+        return 0;
 
     LPTSTR errorMsg = nullptr;
     DWORD len = FormatMessage(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        nullptr, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        reinterpret_cast<LPTSTR>(&errorMsg), 0, nullptr
-    );
+        nullptr,
+        errorCode,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        reinterpret_cast<LPTSTR>(&errorMsg),
+        0,
+        nullptr);
 
     if (len && errorMsg) {
         DWORD written = Console::WriteTextToConsole(consoleHandle, errorMsg);
@@ -90,7 +96,7 @@ DWORD Process::GetAllProcesses(PROCESSENTRY32** processList, DWORD* processCount
     if (snapshot == INVALID_HANDLE_VALUE)
         return GetLastError();
 
-    PROCESSENTRY32 entry = { sizeof(PROCESSENTRY32) };
+    PROCESSENTRY32 entry = {sizeof(PROCESSENTRY32)};
     std::vector<PROCESSENTRY32> processes;
 
     if (Process32First(snapshot, &entry)) {
