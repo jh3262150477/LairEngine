@@ -1,9 +1,7 @@
-﻿//
-// Created by 32621 on 2025/9/29.
-//
-
-#include "LairEngine.h"
+﻿#include "LairEngine.h"
+#include <basetsd.h>
 #include <minwindef.h>
+#include <cstddef>
 #include "Types.h"
 #include "Win32Tools.h"
 
@@ -62,7 +60,7 @@ DWORD LairEngine::getProcCount() const {
 template <AllowedType T>
 T LairEngine::ReadMemory(Types::Data::Address lpAddr, DWORD *errorCode) {
     T buffer;
-    if (!ReadProcessMemory(getCurrentHandle(), reinterpret_cast<LPCVOID>(lpAddr), &buffer, sizeof(T), NULL)) {
+    if (!ReadProcessMemory(this->currentProcHandle, reinterpret_cast<LPCVOID>(lpAddr), &buffer, sizeof(T), NULL)) {
         if (errorCode) {
             *errorCode = GetLastError();
         }
@@ -78,6 +76,16 @@ T LairEngine::ReadMemory(Types::Data::Address lpAddr, DWORD *errorCode) {
 
 template <AllowedType T>
 DWORD LairEngine::WriteMemory(Types::Data::Address lpAddr, T targetValue) {
+    if (!lpAddr) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Invalid Address\n"), __func__);
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    if (!this->currentProcHandle || this->currentProcHandle == INVALID_HANDLE_VALUE) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Invalid Process Handle\n"), __func__);
+        return ERROR_INVALID_HANDLE;
+    }
+
     SIZE_T written = 0;
     BOOL ok = WriteProcessMemory(
         this->getCurrentHandle(), reinterpret_cast<LPVOID>(lpAddr), &targetValue, sizeof(T), &written);
@@ -177,7 +185,7 @@ DWORD LairEngine::ScanMemory(T targetValue, Types::Data::PAddress pAddrs, DWORD 
             }
 
             // 在 buffer 中搜索目标值
-            for (SIZE_T i = 0; i + typeSize <= bytesRead; i+= sizeof(T)) {
+            for (SIZE_T i = 0; i + typeSize <= bytesRead; i+= typeSize) {
                 if (*(T*)(buffer + i) == targetValue) {
                     Types::Data::Address foundAddr = (Types::Data::Address)readAddr + i;
 
@@ -223,12 +231,12 @@ DWORD LairEngine::RefineMemory(T targetValue, Types::Data::PAddress pAddrs, DWOR
     // 获取目标值的字节表示
     const BYTE *pTargetValue = reinterpret_cast<const BYTE *>(&targetValue);
     SIZE_T typeSize = sizeof(T);
-    DWORD originalCount = *pAddrCount; // 原始地址数量
+    DWORD maxCapacity = *pAddrCount; // 原始地址数量
     DWORD refinedCount = 0;            // 精化后的地址数量
     DWORD readErrors = 0;              // 读取错误数量
 
     // 遍历所有输入的地址
-    for (DWORD i = 0; i < originalCount; ++i) {
+    for (DWORD i = 0; i < maxCapacity; ++i) {
         Types::Data::Address currentAddr = pAddrs[i];
 
         // 从目标地址读取内存
@@ -249,12 +257,58 @@ DWORD LairEngine::RefineMemory(T targetValue, Types::Data::PAddress pAddrs, DWOR
         }
     }
 
-    Console::PrintfT(Config::getStdOutputHandle(),TEXT("fun( %S ) Refined: %lu -> %lu addresses (Read Errors: %lu)\n"), __func__, originalCount, refinedCount, readErrors);
+    Console::PrintfT(Config::getStdOutputHandle(),TEXT("fun( %S ) Refined: %lu -> %lu addresses (Read Errors: %lu)\n"), __func__, maxCapacity, refinedCount, readErrors);
     // 更新返回的地址数量
     *pAddrCount = refinedCount;
     return ERROR_SUCCESS;
 }
 
+DWORD LairEngine::ResolvePointerChain(const Types::AddressInfo::PointerPath& PointerPath, Types::Data::Address *pTargetAddr) {
+    if (!pTargetAddr) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Invalid Parameter\n"), __func__);
+        return ERROR_INVALID_PARAMETER;
+    }
+
+    if (PointerPath.offsets.empty()) {
+        *pTargetAddr = PointerPath.baseAddr;
+        return ERROR_SUCCESS;
+    }
+
+    Types::Data::Address currentAddr = PointerPath.baseAddr;
+    for (SIZE_T i = 0; i < PointerPath.offsets.size(); ++i) {
+        Types::Data::Address pointer = 0;
+        SIZE_T bytesRead = 0;
+        if (!ReadProcessMemory(this->currentProcHandle, reinterpret_cast<LPCVOID>(currentAddr), &pointer, sizeof(Types::Data::Address), &bytesRead) || bytesRead == 0) {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Read Memory Failed\n"), __func__);
+            return ERROR_READ_FAULT;
+        }
+        currentAddr = pointer + PointerPath.offsets[i];
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Current Address: 0x%llX\n"), __func__, currentAddr);
+    } 
+    *pTargetAddr = currentAddr;
+    return ERROR_SUCCESS;
+}
+
+template <AllowedType T>
+T LairEngine::ReadValueFromPointerChain(const Types::AddressInfo::PointerPath &PointerPath, DWORD *errorCode) {
+    Types::Data::Address pTargetAddr = 0;
+    DWORD ret = ResolvePointerChain(PointerPath, &pTargetAddr);
+    if (ret != ERROR_SUCCESS) {
+        if (errorCode) {
+            *errorCode = ret;
+        }
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Resolve Pointer Chain Failed\n"), __func__);
+        return T();
+    }
+    return ReadMemory<T>(pTargetAddr, errorCode);
+}
+
+Types::Data::Address LairEngine::GetModuleBaseAddress(LPCTSTR moduleName, DWORD *errorCode) {
+    return Process::GetModuleBaseAddress(this->ProcessID, moduleName, errorCode);
+}
+
+
+//实例化模板
 template Types::Data::Byte LairEngine::ReadMemory<Types::Data::Byte>(Types::Data::Address lpAddr, DWORD *errorCode);
 template Types::Data::Word LairEngine::ReadMemory<Types::Data::Word>(Types::Data::Address lpAddr, DWORD *errorCode);
 template Types::Data::Dword LairEngine::ReadMemory<Types::Data::Dword>(Types::Data::Address lpAddr, DWORD *errorCode);
@@ -283,3 +337,10 @@ template DWORD LairEngine::RefineMemory<Types::Data::Float>(Types::Data::Float t
 template DWORD LairEngine::RefineMemory<Types::Data::Double>(Types::Data::Double targetValue, Types::Data::PAddress pAddrs, DWORD *pAddrCount);
 template DWORD LairEngine::RefineMemory<Types::Data::IntPtr>(Types::Data::IntPtr targetValue, Types::Data::PAddress pAddrs, DWORD *pAddrCount);
 template DWORD LairEngine::RefineMemory<Types::Data::UIntPtr>(Types::Data::UIntPtr targetValue, Types::Data::PAddress pAddrs, DWORD *pAddrCount);
+template Types::Data::Byte LairEngine::ReadValueFromPointerChain<Types::Data::Byte>(const Types::AddressInfo::PointerPath& PointerPath, DWORD *errorCode);
+template Types::Data::Word LairEngine::ReadValueFromPointerChain<Types::Data::Word>(const Types::AddressInfo::PointerPath& PointerPath, DWORD *errorCode);
+template Types::Data::Dword LairEngine::ReadValueFromPointerChain<Types::Data::Dword>(const Types::AddressInfo::PointerPath& PointerPath, DWORD *errorCode);
+template Types::Data::Float LairEngine::ReadValueFromPointerChain<Types::Data::Float>(const Types::AddressInfo::PointerPath& PointerPath, DWORD *errorCode);
+template Types::Data::Double LairEngine::ReadValueFromPointerChain<Types::Data::Double>(const Types::AddressInfo::PointerPath &PointerPath, DWORD *errorCode);
+template Types::Data::IntPtr LairEngine::ReadValueFromPointerChain<Types::Data::IntPtr>(const Types::AddressInfo::PointerPath &PointerPath, DWORD *errorCode);
+template Types::Data::UIntPtr LairEngine::ReadValueFromPointerChain<Types::Data::UIntPtr>(const Types::AddressInfo::PointerPath &PointerPath, DWORD *errorCode);

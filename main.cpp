@@ -9,6 +9,7 @@ void run();
 void selectProcess();
 void newSearch();
 void writeMemory();
+void readPointerChain();
 
 // 辅助函数：清理输入错误
 inline void clearInputError() {
@@ -22,8 +23,8 @@ void showMenu() {
     Console::PrintfT(Config::getStdOutputHandle(), TEXT("           当前进程ID：%lu\n"), lair_engine.getPID());
     Console::PrintfT(Config::getStdOutputHandle(), TEXT("1、选择进程\n"));
     Console::PrintfT(Config::getStdOutputHandle(), TEXT("2、新的搜索\n"));
-    Console::PrintfT(Config::getStdOutputHandle(), TEXT("3、改善搜索\n"));
     Console::PrintfT(Config::getStdOutputHandle(), TEXT("3、修改内存\n"));
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("4、读取指针链\n"));
     Console::PrintfT(Config::getStdOutputHandle(), TEXT("0、退出\n"));
 }
 
@@ -44,6 +45,9 @@ void run() {
             break;
         case 3:
             writeMemory();
+            break;
+        case 4:
+            readPointerChain();
             break;
         default:
             Console::PrintfT(Config::getStdOutputHandle(), TEXT("无效选项，\n"));
@@ -332,6 +336,149 @@ void writeMemory() {
     if (errorCode == ERROR_SUCCESS) {
         Console::PrintfT(Config::getStdOutputHandle(), TEXT("地址 0x%08X 处的值已成功修改为: %lu\n"), pAddr, newValue);
     }
+    system("pause");
+}
+
+void readPointerChain() {
+    system("cls");
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("========== 指针链读取 ==========\n"));
+    
+    // 创建指针路径
+    Types::AddressInfo::PointerPath path;
+    
+    // 选择基址输入方式
+    int baseAddrMode = 0;
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("选择基址输入方式:\n"));
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("1、直接输入基址（16进制）\n"));
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("2、使用模块基址 + 偏移\n"));
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("请选择: "));
+    std::cin >> std::dec >> baseAddrMode;
+    
+    Types::Data::Address baseAddr = 0;
+    
+    if (baseAddrMode == 2) {
+        // 使用模块基址
+        TCHAR moduleName[MAX_PATH] = {0};
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("请输入模块名（如 PlantsVsZombies.exe）: "));
+        std::wcin >> moduleName;
+        
+        DWORD moduleError = 0;
+        Types::Data::Address moduleBase = lair_engine.GetModuleBaseAddress(moduleName, &moduleError);
+        if (moduleBase == 0 || moduleError != ERROR_SUCCESS) {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("未找到模块！错误代码: %lu\n"), moduleError);
+            system("pause");
+            return;
+        }
+        
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("模块基址: 0x%llX\n"), moduleBase);
+        
+        Types::Data::Address staticOffset = 0;
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("请输入静态偏移量（16进制，如 329670）: 0x"));
+        std::cin >> std::hex >> staticOffset;
+        
+        baseAddr = moduleBase + staticOffset;
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("静态基址: 0x%llX\n"), baseAddr);
+    } else {
+        // 直接输入基址
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("请输入基址（16进制，如 400000）: 0x"));
+        std::cin >> std::hex >> baseAddr;
+    }
+    
+    path.baseAddr = baseAddr;
+    
+    // 输入偏移量数量
+    int offsetCount = 0;
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("请输入偏移量数量（如 2 表示 2 级指针）: "));
+    std::cin >> std::dec >> offsetCount;
+    
+    if (offsetCount < 0 || offsetCount > 10) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("偏移量数量无效（范围: 0-10）！\n"));
+        system("pause");
+        return;
+    }
+    
+    // 输入每个偏移量
+    for (int i = 0; i < offsetCount; i++) {
+        DWORD offset = 0;
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("请输入第 %d 个偏移量（16进制，如 18）: 0x"), i + 1);
+        std::cin >> std::hex >> offset;
+        path.addOffset(offset);
+    }
+    
+    // 显示指针链信息
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("\n指针链: [0x%llX]"), path.baseAddr);
+    for (size_t i = 0; i < path.offsets.size(); i++) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT(" + 0x%lX"), path.offsets[i]);
+    }
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("\n\n"));
+    
+    // 选择数据类型
+    SHORT dataType = 0;
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("选择数据类型:\n"));
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("1、Byte   2、Word   3、Dword\n"));
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("4、Float  5、Double\n"));
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("请选择: "));
+    std::cin >> std::dec >> dataType;
+    
+    if (dataType < 1 || dataType > 5) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("无效的数据类型！\n"));
+        system("pause");
+        return;
+    }
+    
+    // 读取值
+    DWORD errorCode = 0;
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("\n正在解析指针链...\n"));
+    
+    switch (dataType) {
+    case 1: { // Byte
+        Types::Data::Byte value = lair_engine.ReadValueFromPointerChain<Types::Data::Byte>(path, &errorCode);
+        if (errorCode == ERROR_SUCCESS) {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取成功! 值: %u\n"), value);
+        } else {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取失败! 错误代码: %lu\n"), errorCode);
+        }
+        break;
+    }
+    case 2: { // Word
+        Types::Data::Word value = lair_engine.ReadValueFromPointerChain<Types::Data::Word>(path, &errorCode);
+        if (errorCode == ERROR_SUCCESS) {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取成功! 值: %u\n"), value);
+        } else {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取失败! 错误代码: %lu\n"), errorCode);
+        }
+        break;
+    }
+    case 3: { // Dword
+        Types::Data::Dword value = lair_engine.ReadValueFromPointerChain<Types::Data::Dword>(path, &errorCode);
+        if (errorCode == ERROR_SUCCESS) {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取成功! 值: %lu\n"), value);
+        } else {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取失败! 错误代码: %lu\n"), errorCode);
+        }
+        break;
+    }
+    case 4: { // Float
+        Types::Data::Float value = lair_engine.ReadValueFromPointerChain<Types::Data::Float>(path, &errorCode);
+        if (errorCode == ERROR_SUCCESS) {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取成功! 值: %f\n"), value);
+        } else {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取失败! 错误代码: %lu\n"), errorCode);
+        }
+        break;
+    }
+    case 5: { // Double
+        Types::Data::Double value = lair_engine.ReadValueFromPointerChain<Types::Data::Double>(path, &errorCode);
+        if (errorCode == ERROR_SUCCESS) {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取成功! 值: %lf\n"), value);
+        } else {
+            Console::PrintfT(Config::getStdOutputHandle(), TEXT("读取失败! 错误代码: %lu\n"), errorCode);
+        }
+        break;
+    }
+    }
+    
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("\n"));
     system("pause");
 }
 

@@ -1,9 +1,10 @@
 ﻿#include "Win32Tools.h"
 #include <cstdio>
-#include <cstdarg>
 #include <vector>
+#include <TlHelp32.h>
+#include <handleapi.h>
 #include <tchar.h>
-
+#include <winnt.h>
 // ---------------- ConsoleIO 实现 ----------------
 DWORD Console::WriteTextToConsole(HANDLE consoleHandle, LPCTSTR text) {
     if (!consoleHandle || consoleHandle == INVALID_HANDLE_VALUE || !text)
@@ -125,4 +126,52 @@ DWORD Process::GetAllProcesses(PROCESSENTRY32** processList, DWORD* processCount
     *processList = list;
     *processCount = count;
     return ERROR_SUCCESS;
+}
+
+UINT64 Process::GetModuleBaseAddress(DWORD ProcessID, LPCTSTR moduleName, DWORD* errorCode) {
+    if (!ProcessID || !moduleName) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Invalid Parameter\n"), __func__);
+        if (errorCode) {
+            *errorCode = ERROR_INVALID_PARAMETER;
+        }
+        return 0;
+    }
+
+    HANDLE hSnapShot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, ProcessID);
+    if (hSnapShot == INVALID_HANDLE_VALUE) {
+        Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) CreateToolhelp32Snapshot failed\n"), __func__);
+        if (errorCode) {
+            *errorCode = GetLastError();
+        }
+        return 0;
+    }
+
+    MODULEENTRY32 me32 = {0};
+    me32.dwSize = sizeof(MODULEENTRY32);
+    if (Module32First(hSnapShot, &me32)) {
+        do {
+#ifdef UNICODE
+            if (_wcsicmp(me32.szModule, moduleName) == 0) {
+#else
+            if (_stricmp(me32.szModule, moduleName) == 0) {
+#endif
+                UINT64 baseAddress = (UINT64)me32.modBaseAddr;
+                CloseHandle(hSnapShot);
+                Console::PrintfT(Config::getStdOutputHandle(), 
+                               TEXT("fun( %S ) Found Module: %s, Base: 0x%llX, Size: 0x%lX\n"), 
+                               __func__, moduleName, baseAddress, me32.modBaseSize);
+                if (errorCode) {
+                    *errorCode = ERROR_SUCCESS;
+                }
+                return baseAddress;
+            }
+        } while (Module32Next(hSnapShot, &me32));
+    }
+
+    CloseHandle(hSnapShot);
+    Console::PrintfT(Config::getStdOutputHandle(), TEXT("fun( %S ) Module not found\n"), __func__);
+    if (errorCode) {
+        *errorCode = ERROR_NOT_FOUND;
+    }
+    return 0;
 }

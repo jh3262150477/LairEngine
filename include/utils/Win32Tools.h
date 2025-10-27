@@ -12,6 +12,15 @@ namespace Process {
  * @return 成功返回 ERROR_SUCCESS，失败返回 GetLastError()
  */
 DWORD GetAllProcesses(PROCESSENTRY32** processList, DWORD* processCount);
+
+/**
+* @brief 获取模块基址
+* @param ProcessID 进程ID
+* @param moduleName 模块名称
+* @param errorCode 错误码
+* @return 返回模块基址
+*/
+UINT64 GetModuleBaseAddress(DWORD ProcessID, LPCTSTR moduleName, DWORD *errorCode);
 }  // namespace Process
 
 namespace Console {
